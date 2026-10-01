@@ -1,10 +1,11 @@
-import { History, CheckCircle2, Clock, User, Calendar } from 'lucide-react';
+import { History, CheckCircle2, Clock, User, Calendar, Download } from 'lucide-react';
 import type { Viaje } from '../types.ts';
 import { formatearFechaHora } from '../utils/dateUtils.ts';
 
 interface HistorialViajesProps {
   viajes: Viaje[];
   onIrANuevoViaje?: () => void;
+  onExportarRespaldo?: () => void;
 }
 
 /**
@@ -20,6 +21,7 @@ interface HistorialViajesProps {
 export function HistorialViajes({
   viajes,
   onIrANuevoViaje,
+  onExportarRespaldo,
 }: HistorialViajesProps) {
   // Filtramos los viajes completados y los mostramos en orden cronológico inverso (el más reciente primero)
   const viajesFinalizados = viajes
@@ -56,9 +58,22 @@ export function HistorialViajes({
               </p>
             </div>
           </div>
-          <span className="text-xs font-semibold px-2 py-0.5 bg-slate-100 text-slate-600 rounded-md font-mono">
-            {viajesFinalizados.length}
-          </span>
+          <div className="flex items-center gap-2">
+            {viajesFinalizados.length > 0 && onExportarRespaldo && (
+              <button
+                type="button"
+                onClick={onExportarRespaldo}
+                title="Exportar respaldo JSON"
+                className="py-1 px-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-medium rounded-lg flex items-center gap-1.5 transition-colors cursor-pointer"
+              >
+                <Download className="w-3.5 h-3.5" />
+                <span className="text-[11px]">Exportar</span>
+              </button>
+            )}
+            <span className="text-xs font-semibold px-2 py-0.5 bg-slate-100 text-slate-600 rounded-md font-mono">
+              {viajesFinalizados.length}
+            </span>
+          </div>
         </div>
 
         {viajesFinalizados.length === 0 ? (

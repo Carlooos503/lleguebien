@@ -3,72 +3,123 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Header } from './components/Header.tsx';
 import { NuevoViajeForm } from './components/NuevoViajeForm.tsx';
 import { ViajeActivoCard } from './components/ViajeActivoCard.tsx';
 import { ContactosManager } from './components/ContactosManager.tsx';
 import { HistorialViajes } from './components/HistorialViajes.tsx';
+import { RespaldoSection } from './components/RespaldoSection.tsx';
 import type { Contacto, Viaje } from './types.ts';
-import { CheckCircle2, BookOpen } from 'lucide-react';
+import {
+  cargarContactos,
+  guardarContactos,
+  cargarViajes,
+  guardarViajes,
+  exportarRespaldoAJson,
+} from './utils/storage.ts';
+import { CheckCircle2, AlertTriangle, BookOpen } from 'lucide-react';
 
 /**
- * Componente Principal de la Aplicación "Llegué Bien".
+ * Componente Principal de "Llegué Bien" - Versión M2 con Persistencia Local (localStorage).
  *
- * EXPLICACIÓN DIDÁCTICA PARA EL ESTUDIANTE:
- * ========================================
- * 1. Single Source of Truth (Única fuente de la verdad):
- *    En lugar de guardar `viajeActivo` en un estado separado de `viajes`,
- *    guardamos la lista completa en `viajes` y calculamos el activo con `.find()`.
- *    Esto evita desfasajes donde un estado dice que hay viaje pero el otro no.
+ * CONCEPTOS DIDÁCTICOS PARA EL ESTUDIANTE DE 3ER AÑO:
+ * ===================================================
+ * 1. Inicialización de Estado Perezosa (Lazy Initializer):
+ *    Al pasar una función a `useState(() => { ... })`, React ejecuta la lectura de localStorage
+ *    ÚNICAMENTE en el primer render de la app. Si leyéramos `localStorage.getItem` en el cuerpo
+ *    del componente, se ejecutaría innecesariamente en cada re-render, afectando el rendimiento.
  *
- * 2. Inmutabilidad en los métodos de actualización:
- *    - Agregar: `setContactos(prev => [...prev, nuevo])`
- *    - Eliminar: `setContactos(prev => prev.filter(c => c.id !== id))`
- *    - Actualizar viaje a "Llegué": `setViajes(prev => prev.map(...))`
+ * 2. Manejo de Errores y Protección de Datos:
+ *    Si `cargarContactos()` o `cargarViajes()` detecta que el JSON está dañado o manipulado,
+ *    activamos `errorAlmacenamiento` y BLOQUEAMOS la sobreescritura automática. Así prevenimos
+ *    borrar información del usuario por error.
  *
- * 3. Restricción de regla de negocio:
- *    Permitimos solo un viaje activo a la vez comprobando `viajeActivo !== undefined`.
+ * 3. Feedback Honesto al Usuario:
+ *    Cumpliendo el requisito "no muestres 'guardado' si falló el almacenamiento", verificamos
+ *    el resultado retornado por `guardarContactos()` o `guardarViajes()`. Solo felicitamos si
+ *    el navegador realmente persistió la información en el disco del dispositivo.
  */
 export default function App() {
-  // Pestaña actual de la pantalla móvil ('viaje', 'contactos', 'historial')
-  const [pestanaActiva, setPestanaActiva] = useState<'viaje' | 'contactos' | 'historial'>('viaje');
+  // Pestaña actual de la pantalla móvil ('viaje', 'contactos', 'historial', 'respaldo')
+  const [pestanaActiva, setPestanaActiva] = useState<
+    'viaje' | 'contactos' | 'historial' | 'respaldo'
+  >('viaje');
 
-  // Contactos de emergencia guardados en memoria
-  const [contactos, setContactos] = useState<Contacto[]>([
-    // Dejamos un contacto precargado para facilitar la primera prueba rápida del estudiante,
-    // o el usuario puede agregar uno nuevo libremente desde la interfaz.
-    {
-      id: 'contacto-demo-1',
-      nombre: 'Mamá',
-      telefono: '+54 9 11 4455-6677',
-    },
-  ]);
+  // Registro de errores de almacenamiento (ej: datos corruptos o cuota superada)
+  const [errorAlmacenamiento, setErrorAlmacenamiento] = useState<string | null>(null);
 
-  // Lista de viajes en memoria
-  const [viajes, setViajes] = useState<Viaje[]>([]);
-
-  // Notificación temporal al completar una acción
+  // Notificación de éxito o información
   const [mensajeExito, setMensajeExito] = useState<string | null>(null);
+  // Notificación de advertencia/error de operación
+  const [mensajeError, setMensajeError] = useState<string | null>(null);
+
+  // 1. Cargamos contactos desde localStorage al arrancar
+  const [contactos, setContactos] = useState<Contacto[]>(() => {
+    const res = cargarContactos();
+    if (res.exito && res.datos) {
+      return res.datos;
+    }
+    return [];
+  });
+
+  // 2. Cargamos viajes desde localStorage al arrancar
+  const [viajes, setViajes] = useState<Viaje[]>(() => {
+    const res = cargarViajes();
+    if (res.exito && res.datos) {
+      return res.datos;
+    }
+    return [];
+  });
+
+  // Al montar, verificamos si alguna de las dos cargas falló por datos dañados
+  useEffect(() => {
+    const resContactos = cargarContactos();
+    const resViajes = cargarViajes();
+
+    if (!resContactos.exito && resContactos.error) {
+      setErrorAlmacenamiento(resContactos.error);
+    } else if (!resViajes.exito && resViajes.error) {
+      setErrorAlmacenamiento(resViajes.error);
+    }
+  }, []);
 
   // Estado derivado: viaje actualmente en curso
   const viajeActivo = viajes.find((v) => v.estado === 'en_curso') || null;
 
   // Manejador: Agregar nuevo contacto
   const handleAgregarContacto = (nuevoContacto: Contacto) => {
-    setContactos((prev) => [...prev, nuevoContacto]);
-    mostrarNotificacion(`Contacto "${nuevoContacto.nombre}" guardado.`);
+    const nuevosContactos = [...contactos, nuevoContacto];
+    setContactos(nuevosContactos);
+
+    // Intentamos persistir en localStorage
+    const resultado = guardarContactos(nuevosContactos);
+
+    if (resultado.exito) {
+      mostrarNotificacionExito(`Contacto "${nuevoContacto.nombre}" guardado en el almacenamiento local.`);
+    } else {
+      mostrarNotificacionError(
+        resultado.error || 'No se pudo guardar el contacto en el almacenamiento local. Solo se mantendrá en esta sesión.'
+      );
+    }
   };
 
   // Manejador: Eliminar contacto
   const handleEliminarContacto = (id: string) => {
-    // Si el contacto está asignado al viaje activo, prevenimos borrarlo
     if (viajeActivo && viajeActivo.contactoId === id) {
       alert('No podés eliminar este contacto porque tiene un viaje en curso asignado.');
       return;
     }
-    setContactos((prev) => prev.filter((c) => c.id !== id));
-    mostrarNotificacion('Contacto eliminado de la memoria.');
+
+    const nuevosContactos = contactos.filter((c) => c.id !== id);
+    setContactos(nuevosContactos);
+
+    const resultado = guardarContactos(nuevosContactos);
+    if (resultado.exito) {
+      mostrarNotificacionExito('Contacto eliminado del almacenamiento.');
+    } else {
+      mostrarNotificacionError(resultado.error || 'Error al actualizar el almacenamiento.');
+    }
   };
 
   // Manejador: Iniciar viaje
@@ -77,42 +128,85 @@ export default function App() {
       alert('Ya tenés un viaje en curso.');
       return;
     }
-    setViajes((prev) => [...prev, nuevoViaje]);
+
+    const nuevosViajes = [...viajes, nuevoViaje];
+    setViajes(nuevosViajes);
     setPestanaActiva('viaje');
-    mostrarNotificacion(`¡Viaje hacia ${nuevoViaje.destino} iniciado con éxito!`);
+
+    const resultado = guardarViajes(nuevosViajes);
+    if (resultado.exito) {
+      mostrarNotificacionExito(`¡Viaje hacia ${nuevoViaje.destino} iniciado y guardado!`);
+    } else {
+      mostrarNotificacionError(
+        resultado.error || 'Viaje iniciado en memoria, pero no pudo guardarse en el almacenamiento local.'
+      );
+    }
   };
 
   // Manejador: Presionar botón "¡Llegué!"
   const handleLlegue = (viajeId: string) => {
     const ahoraIso = new Date().toISOString();
 
-    setViajes((prev) =>
-      prev.map((v) => {
-        if (v.id === viajeId) {
-          return {
-            ...v,
-            estado: 'finalizado',
-            fechaHoraLlegadaReal: ahoraIso,
-          };
-        }
-        return v;
-      })
-    );
+    const nuevosViajes = viajes.map((v) => {
+      if (v.id === viajeId) {
+        return {
+          ...v,
+          estado: 'finalizado' as const,
+          fechaHoraLlegadaReal: ahoraIso,
+        };
+      }
+      return v;
+    });
 
-    mostrarNotificacion('¡Excelente! Marcaste tu llegada y el viaje quedó finalizado.');
+    setViajes(nuevosViajes);
+
+    const resultado = guardarViajes(nuevosViajes);
+    if (resultado.exito) {
+      mostrarNotificacionExito('¡Excelente! Marcaste tu llegada y quedó guardada en el historial.');
+    } else {
+      mostrarNotificacionError(
+        resultado.error || 'Llegada registrada en memoria, pero falló el almacenamiento local.'
+      );
+    }
   };
 
   // Manejador: Cancelar viaje en curso (sin marcar llegada)
   const handleCancelarViaje = (viajeId: string) => {
-    setViajes((prev) => prev.filter((v) => v.id !== viajeId));
-    mostrarNotificacion('Viaje cancelado.');
+    const nuevosViajes = viajes.filter((v) => v.id !== viajeId);
+    setViajes(nuevosViajes);
+
+    const resultado = guardarViajes(nuevosViajes);
+    if (resultado.exito) {
+      mostrarNotificacionExito('Viaje cancelado.');
+    } else {
+      mostrarNotificacionError(resultado.error || 'Error al actualizar el almacenamiento.');
+    }
   };
 
-  const mostrarNotificacion = (texto: string) => {
+  // Manejador: Exportar respaldo rápido desde cualquier lugar
+  const handleExportarRespaldo = () => {
+    const resultado = exportarRespaldoAJson(contactos, viajes);
+    if (resultado.exito) {
+      mostrarNotificacionExito(`Respaldo descargado: ${resultado.datos}`);
+    } else {
+      mostrarNotificacionError(resultado.error || 'No se pudo generar el archivo de respaldo.');
+    }
+  };
+
+  const mostrarNotificacionExito = (texto: string) => {
     setMensajeExito(texto);
+    setMensajeError(null);
     setTimeout(() => {
       setMensajeExito((actual) => (actual === texto ? null : actual));
-    }, 4000);
+    }, 4500);
+  };
+
+  const mostrarNotificacionError = (texto: string) => {
+    setMensajeError(texto);
+    setMensajeExito(null);
+    setTimeout(() => {
+      setMensajeError((actual) => (actual === texto ? null : actual));
+    }, 6000);
   };
 
   return (
@@ -127,15 +221,30 @@ export default function App() {
           hayViajeActivo={viajeActivo !== null}
         />
 
-        {/* Mensaje flotante de feedback al usuario */}
+        {/* Mensaje flotante de éxito */}
         {mensajeExito && (
-          <div className="mx-4 mt-3 p-3 bg-emerald-700 text-white rounded-xl shadow-md text-xs font-semibold flex items-center gap-2 animate-fade-in transition-all">
+          <div className="mx-4 mt-3 p-3 bg-emerald-700 text-white rounded-xl shadow-md text-xs font-semibold flex items-center gap-2 transition-all">
             <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-200" />
             <span className="flex-1">{mensajeExito}</span>
             <button
               type="button"
               onClick={() => setMensajeExito(null)}
-              className="text-white/80 hover:text-white text-xs px-1"
+              className="text-white/80 hover:text-white text-xs px-1 cursor-pointer"
+            >
+              ✕
+            </button>
+          </div>
+        )}
+
+        {/* Mensaje flotante de error al guardar */}
+        {mensajeError && (
+          <div className="mx-4 mt-3 p-3 bg-red-700 text-white rounded-xl shadow-md text-xs font-semibold flex items-center gap-2 transition-all">
+            <AlertTriangle className="w-4 h-4 shrink-0 text-red-200" />
+            <span className="flex-1">{mensajeError}</span>
+            <button
+              type="button"
+              onClick={() => setMensajeError(null)}
+              className="text-white/80 hover:text-white text-xs px-1 cursor-pointer"
             >
               ✕
             </button>
@@ -178,18 +287,29 @@ export default function App() {
             <HistorialViajes
               viajes={viajes}
               onIrANuevoViaje={() => setPestanaActiva('viaje')}
+              onExportarRespaldo={handleExportarRespaldo}
             />
           )}
 
-          {/* Ficha explicativa para la práctica escolar (colapsable/informativa) */}
+          {pestanaActiva === 'respaldo' && (
+            <RespaldoSection
+              contactos={contactos}
+              viajes={viajes}
+              errorAlmacenamiento={errorAlmacenamiento}
+              onNotificarExito={mostrarNotificacionExito}
+              onNotificarError={mostrarNotificacionError}
+            />
+          )}
+
+          {/* Ficha explicativa para la práctica escolar */}
           <section className="mt-8 pt-6 border-t border-slate-200/90 text-xs text-slate-500 space-y-2">
             <div className="flex items-center gap-1.5 font-semibold text-slate-700">
               <BookOpen className="w-4 h-4 text-slate-500" />
-              <span>Práctica Escolar - Ejercicio 31</span>
+              <span>Práctica Escolar - Ejercicio 31 (Mejora M2)</span>
             </div>
             <p className="text-[11px] leading-relaxed text-slate-500">
-              Esta versión almacena los datos en memoria (variables de estado de React).
-              Los datos se reiniciarán si recargás el navegador por completo.
+              Persistencia local habilitada con <code>localStorage</code> (versión 1.0).
+              Tus contactos y viajes se conservan al cerrar o recargar la pestaña.
             </p>
           </section>
         </main>

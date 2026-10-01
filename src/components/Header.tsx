@@ -1,8 +1,8 @@
-import { ShieldCheck, Users, Navigation, History } from 'lucide-react';
+import { ShieldCheck, Users, Navigation, History, HardDrive } from 'lucide-react';
 
 interface HeaderProps {
-  pestanaActiva: 'viaje' | 'contactos' | 'historial';
-  onCambiarPestana: (pestana: 'viaje' | 'contactos' | 'historial') => void;
+  pestanaActiva: 'viaje' | 'contactos' | 'historial' | 'respaldo';
+  onCambiarPestana: (pestana: 'viaje' | 'contactos' | 'historial' | 'respaldo') => void;
   cantidadContactos: number;
   hayViajeActivo: boolean;
 }
@@ -57,7 +57,7 @@ export function Header({
           <button
             type="button"
             onClick={() => onCambiarPestana('viaje')}
-            className={`flex-1 flex items-center justify-center gap-1.5 py-2 px-2 text-xs font-semibold rounded-lg transition-all min-h-[40px] ${
+            className={`flex-1 flex items-center justify-center gap-1 py-2 px-1 text-[11px] font-semibold rounded-lg transition-all min-h-[40px] ${
               pestanaActiva === 'viaje'
                 ? 'bg-emerald-600 text-white shadow-sm'
                 : 'text-slate-300 hover:text-white'
@@ -73,7 +73,7 @@ export function Header({
           <button
             type="button"
             onClick={() => onCambiarPestana('contactos')}
-            className={`flex-1 flex items-center justify-center gap-1.5 py-2 px-2 text-xs font-semibold rounded-lg transition-all min-h-[40px] ${
+            className={`flex-1 flex items-center justify-center gap-1 py-2 px-1 text-[11px] font-semibold rounded-lg transition-all min-h-[40px] ${
               pestanaActiva === 'contactos'
                 ? 'bg-emerald-600 text-white shadow-sm'
                 : 'text-slate-300 hover:text-white'
@@ -87,7 +87,7 @@ export function Header({
           <button
             type="button"
             onClick={() => onCambiarPestana('historial')}
-            className={`flex-1 flex items-center justify-center gap-1.5 py-2 px-2 text-xs font-semibold rounded-lg transition-all min-h-[40px] ${
+            className={`flex-1 flex items-center justify-center gap-1 py-2 px-1 text-[11px] font-semibold rounded-lg transition-all min-h-[40px] ${
               pestanaActiva === 'historial'
                 ? 'bg-emerald-600 text-white shadow-sm'
                 : 'text-slate-300 hover:text-white'
@@ -95,6 +95,19 @@ export function Header({
           >
             <History className="w-3.5 h-3.5 shrink-0" />
             <span>Historial</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => onCambiarPestana('respaldo')}
+            className={`flex-1 flex items-center justify-center gap-1 py-2 px-1 text-[11px] font-semibold rounded-lg transition-all min-h-[40px] ${
+              pestanaActiva === 'respaldo'
+                ? 'bg-emerald-600 text-white shadow-sm'
+                : 'text-slate-300 hover:text-white'
+            }`}
+          >
+            <HardDrive className="w-3.5 h-3.5 shrink-0" />
+            <span>Datos</span>
           </button>
         </nav>
       </div>

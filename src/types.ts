@@ -27,3 +27,23 @@ export interface Viaje {
   fechaHoraLlegadaReal?: string; // Solo existirá cuando el usuario presione "Llegué"
   estado: 'en_curso' | 'finalizado';
 }
+
+/**
+ * Estructura del archivo de respaldo JSON (exportación).
+ */
+export interface RespaldoDatos {
+  aplicacion: 'Llegué Bien';
+  version: string; // Ej: "1.0"
+  fechaExportacion: string; // ISO 8601
+  contactos: Contacto[];
+  viajes: Viaje[];
+}
+
+/**
+ * Resultado de una operación de lectura o escritura en almacenamiento.
+ */
+export interface ResultadoPersistencia<T> {
+  exito: boolean;
+  datos?: T;
+  error?: string;
+}
