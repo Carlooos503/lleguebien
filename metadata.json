@@ -1,0 +1,6 @@
+{
+  "name": "Llegué Bien",
+  "description": "Aplicación de seguridad y registro de llegada segura para estudiantes que viajan solos.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
