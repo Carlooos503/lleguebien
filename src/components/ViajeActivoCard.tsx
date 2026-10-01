@@ -5,9 +5,7 @@ import {
   User,
   CheckCircle2,
   AlertTriangle,
-  XCircle,
   ShieldCheck,
-  Send,
 } from 'lucide-react';
 import type { Viaje } from '../types.ts';
 import { formatearFechaHora } from '../utils/dateUtils.ts';

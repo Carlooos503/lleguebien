@@ -10,7 +10,7 @@ import { ViajeActivoCard } from './components/ViajeActivoCard.tsx';
 import { ContactosManager } from './components/ContactosManager.tsx';
 import { HistorialViajes } from './components/HistorialViajes.tsx';
 import type { Contacto, Viaje } from './types.ts';
-import { CheckCircle2, Info, BookOpen, ShieldCheck } from 'lucide-react';
+import { CheckCircle2, BookOpen } from 'lucide-react';
 
 /**
  * Componente Principal de la Aplicación "Llegué Bien".

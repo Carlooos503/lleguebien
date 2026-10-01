@@ -1,4 +1,4 @@
-import { History, CheckCircle2, Clock, MapPin, User, Calendar } from 'lucide-react';
+import { History, CheckCircle2, Clock, User, Calendar } from 'lucide-react';
 import type { Viaje } from '../types.ts';
 import { formatearFechaHora } from '../utils/dateUtils.ts';
 
