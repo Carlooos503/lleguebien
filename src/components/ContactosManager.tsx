@@ -9,15 +9,20 @@ interface ContactosManagerProps {
   onIrAViaje?: () => void;
 }
 
+interface ErroresContacto {
+  nombre?: string;
+  telefono?: string;
+}
+
 /**
  * Componente para registrar y listar contactos de emergencia.
  *
- * CONCEPTOS CLAVE PARA EL ESTUDIANTE:
- * 1. Formularios Controlados: Cada input tiene su valor ligado al estado local (`value={nombre}`)
- *    y se actualiza con `onChange`. En React evitamos leer el DOM directamente con `document.getElementById`.
- * 2. e.preventDefault(): Evita que el navegador recargue toda la página al enviar el formulario (comportamiento default de HTML).
- * 3. Inmutabilidad: Nunca modificamos el array directamente (ej: `contactos.push()`), sino que
- *    creamos un nuevo array con el nuevo elemento y llamamos a `setContactos`.
+ * MEJORAS M4 (VALIDACIONES Y DEFENSIVA):
+ * - Nombre: Obligatorio, no solo espacios, máximo 80 caracteres, no puede ser solo números.
+ * - Teléfono: Obligatorio, solo números (se admiten guiones, espacios y + inicial),
+ *   prohíbe letras y exige como mínimo 8 dígitos numéricos.
+ * - Protección contra doble clic (isSubmitting).
+ * - Errores individuales junto a cada campo sin borrar lo que escribió el usuario.
  */
 export function ContactosManager({
   contactos,
@@ -25,44 +30,69 @@ export function ContactosManager({
   onEliminarContacto,
   onIrAViaje,
 }: ContactosManagerProps) {
-  // Estados locales para los campos del formulario
   const [nombre, setNombre] = useState('');
   const [telefono, setTelefono] = useState('');
-  const [errorValidacion, setErrorValidacion] = useState<string | null>(null);
+  const [errores, setErrores] = useState<ErroresContacto>({});
+  const [guardando, setGuardando] = useState(false);
+
+  const validarCampos = (): boolean => {
+    const nuevosErrores: ErroresContacto = {};
+
+    // 1. Validación de Nombre
+    const nombreLimpio = nombre.trim();
+    if (!nombreLimpio) {
+      nuevosErrores.nombre = 'El nombre es obligatorio y no puede contener solo espacios.';
+    } else if (/^\d+$/.test(nombreLimpio)) {
+      nuevosErrores.nombre = 'El nombre no puede ser solo números. Ingresá un nombre o apodo.';
+    } else if (nombre.length > 80) {
+      nuevosErrores.nombre = 'El nombre no puede superar los 80 caracteres.';
+    }
+
+    // 2. Validación de Teléfono
+    const telefonoLimpio = telefono.trim();
+    if (!telefonoLimpio) {
+      nuevosErrores.telefono = 'El teléfono es obligatorio y no puede contener solo espacios.';
+    } else if (/[a-zA-ZáéíóúÁÉÍÓÚñÑ]/.test(telefono)) {
+      nuevosErrores.telefono = 'El teléfono solo debe contener números, no puede tener letras.';
+    } else if (!/^\+?[\d\s-]+$/.test(telefonoLimpio)) {
+      nuevosErrores.telefono = 'Formato inválido. Ingresá solo números (se permite + al inicio, guiones y espacios).';
+    } else {
+      // Contamos la cantidad real de dígitos numéricos
+      const digitos = telefonoLimpio.replace(/\D/g, '');
+      if (digitos.length < 8) {
+        nuevosErrores.telefono = `El teléfono debe tener como mínimo 8 números (ingresaste ${digitos.length}).`;
+      }
+    }
+
+    setErrores(nuevosErrores);
+    return Object.keys(nuevosErrores).length === 0;
+  };
 
   const handleSubmit = (e: FormEvent) => {
     e.preventDefault();
 
-    // Limpiamos espacios en blanco al inicio y final
-    const nombreLimpio = nombre.trim();
-    const telefonoLimpio = telefono.trim();
+    // Protección contra doble clic
+    if (guardando) return;
 
-    // Validación básica en frontend
-    if (!nombreLimpio) {
-      setErrorValidacion('Por favor ingresá el nombre del contacto.');
-      return;
+    if (!validarCampos()) {
+      return; // Detiene el envío sin borrar los datos tipeados
     }
 
-    if (!telefonoLimpio) {
-      setErrorValidacion('Por favor ingresá un número de teléfono.');
-      return;
-    }
+    setGuardando(true);
 
-    // CONSEJO: Para generar un identificador único en memoria en el frontend,
-    // `crypto.randomUUID()` es el estándar moderno en JavaScript (disponible en todos los navegadores).
-    // Si no estuviera disponible, una alternativa clásica es `Date.now().toString()`.
     const nuevoContacto: Contacto = {
       id: typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(),
-      nombre: nombreLimpio,
-      telefono: telefonoLimpio,
+      nombre: nombre.trim(),
+      telefono: telefono.trim(),
     };
 
     onAgregarContacto(nuevoContacto);
 
-    // Reseteamos el formulario y los errores
+    // Reseteamos el formulario una vez guardado exitosamente
     setNombre('');
     setTelefono('');
-    setErrorValidacion(null);
+    setErrores({});
+    setGuardando(false);
   };
 
   return (
@@ -83,21 +113,20 @@ export function ContactosManager({
           </div>
         </div>
 
-        {errorValidacion && (
-          <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-xl flex items-start gap-2.5 text-red-700 text-xs">
-            <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
-            <span>{errorValidacion}</span>
-          </div>
-        )}
-
-        <form onSubmit={handleSubmit} className="space-y-3.5">
+        <form onSubmit={handleSubmit} className="space-y-3.5" noValidate>
+          {/* Campo Nombre */}
           <div>
-            <label
-              htmlFor="contacto-nombre"
-              className="block text-xs font-semibold text-slate-700 mb-1"
-            >
-              Nombre o Apodo
-            </label>
+            <div className="flex items-center justify-between mb-1">
+              <label
+                htmlFor="contacto-nombre"
+                className="block text-xs font-semibold text-slate-700"
+              >
+                Nombre o Apodo <span className="text-red-500">*</span>
+              </label>
+              <span className="text-[10px] text-slate-400 font-mono">
+                {nombre.length}/80
+              </span>
+            </div>
             <div className="relative">
               <span className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none text-slate-400">
                 <User className="w-4 h-4" />
@@ -105,24 +134,44 @@ export function ContactosManager({
               <input
                 id="contacto-nombre"
                 type="text"
+                maxLength={80}
                 placeholder="Ej: Mamá, Papá, Carlos..."
                 value={nombre}
                 onChange={(e) => {
                   setNombre(e.target.value);
-                  if (errorValidacion) setErrorValidacion(null);
+                  if (errores.nombre) {
+                    setErrores((prev) => ({ ...prev, nombre: undefined }));
+                  }
                 }}
-                className="w-full pl-9 pr-3 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-900 focus:bg-white transition-colors"
+                className={`w-full pl-9 pr-3 py-2.5 bg-slate-50 border rounded-xl text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:bg-white transition-colors ${
+                  errores.nombre
+                    ? 'border-red-400 focus:ring-red-500'
+                    : 'border-slate-300 focus:ring-slate-900'
+                }`}
               />
             </div>
+            {/* Mensaje de error junto al campo */}
+            {errores.nombre && (
+              <p className="mt-1.5 text-xs text-red-600 flex items-center gap-1.5">
+                <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                <span>{errores.nombre}</span>
+              </p>
+            )}
           </div>
 
+          {/* Campo Teléfono */}
           <div>
-            <label
-              htmlFor="contacto-telefono"
-              className="block text-xs font-semibold text-slate-700 mb-1"
-            >
-              Teléfono (WhatsApp / Llamadas)
-            </label>
+            <div className="flex items-center justify-between mb-1">
+              <label
+                htmlFor="contacto-telefono"
+                className="block text-xs font-semibold text-slate-700"
+              >
+                Teléfono <span className="text-red-500">*</span>{' '}
+                <span className="text-[11px] font-normal text-slate-500">
+                  (solo números, mín. 8 dígitos)
+                </span>
+              </label>
+            </div>
             <div className="relative">
               <span className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none text-slate-400">
                 <Phone className="w-4 h-4" />
@@ -130,23 +179,39 @@ export function ContactosManager({
               <input
                 id="contacto-telefono"
                 type="tel"
-                placeholder="Ej: +54 9 11 2345-6789"
+                placeholder="Ej: 1123456789 o +54 9 11 2345-6789"
                 value={telefono}
                 onChange={(e) => {
                   setTelefono(e.target.value);
-                  if (errorValidacion) setErrorValidacion(null);
+                  if (errores.telefono) {
+                    setErrores((prev) => ({ ...prev, telefono: undefined }));
+                  }
                 }}
-                className="w-full pl-9 pr-3 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-900 focus:bg-white transition-colors"
+                className={`w-full pl-9 pr-3 py-2.5 bg-slate-50 border rounded-xl text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:bg-white transition-colors ${
+                  errores.telefono
+                    ? 'border-red-400 focus:ring-red-500'
+                    : 'border-slate-300 focus:ring-slate-900'
+                }`}
               />
             </div>
+            {/* Mensaje de error junto al campo */}
+            {errores.telefono && (
+              <p className="mt-1.5 text-xs text-red-600 flex items-center gap-1.5">
+                <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                <span>{errores.telefono}</span>
+              </p>
+            )}
           </div>
 
           <button
             type="submit"
-            className="w-full py-2.5 px-4 bg-slate-900 hover:bg-slate-800 text-white text-sm font-semibold rounded-xl transition-colors flex items-center justify-center gap-2 min-h-[44px] cursor-pointer shadow-xs active:scale-[0.99]"
+            disabled={guardando}
+            className={`w-full py-2.5 px-4 bg-slate-900 hover:bg-slate-800 text-white text-sm font-semibold rounded-xl transition-all flex items-center justify-center gap-2 min-h-[44px] shadow-xs active:scale-[0.99] ${
+              guardando ? 'opacity-70 cursor-not-allowed' : 'cursor-pointer'
+            }`}
           >
             <UserPlus className="w-4 h-4" />
-            <span>Guardar Contacto</span>
+            <span>{guardando ? 'Guardando...' : 'Guardar Contacto'}</span>
           </button>
         </form>
       </section>
@@ -158,7 +223,7 @@ export function ContactosManager({
             Contactos Registrados ({contactos.length})
           </h3>
           <span className="text-[11px] text-slate-500">
-            En memoria (esta sesión)
+            Almacenado localmente
           </span>
         </div>
 
@@ -184,12 +249,12 @@ export function ContactosManager({
                     {c.nombre.charAt(0).toUpperCase()}
                   </div>
                   <div className="min-w-0">
-                    <p className="text-sm font-semibold text-slate-900 truncate">
+                    <p className="text-sm font-semibold text-slate-900 truncate break-words">
                       {c.nombre}
                     </p>
                     <p className="text-xs text-slate-500 font-mono flex items-center gap-1">
-                      <Phone className="w-3 h-3 text-slate-400" />
-                      <span>{c.telefono}</span>
+                      <Phone className="w-3 h-3 text-slate-400 shrink-0" />
+                      <span className="truncate">{c.telefono}</span>
                     </p>
                   </div>
                 </div>

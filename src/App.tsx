@@ -17,44 +17,33 @@ import {
   cargarViajes,
   guardarViajes,
   exportarRespaldoAJson,
+  CLAVE_VIAJES,
+  CLAVE_CONTACTOS,
 } from './utils/storage.ts';
 import { CheckCircle2, AlertTriangle, BookOpen } from 'lucide-react';
 
 /**
- * Componente Principal de "Llegué Bien" - Versión M2 con Persistencia Local (localStorage).
+ * Componente Principal de "Llegué Bien" - Versión M4 con Validaciones Estrictas y Defensivas.
  *
- * CONCEPTOS DIDÁCTICOS PARA EL ESTUDIANTE DE 3ER AÑO:
- * ===================================================
- * 1. Inicialización de Estado Perezosa (Lazy Initializer):
- *    Al pasar una función a `useState(() => { ... })`, React ejecuta la lectura de localStorage
- *    ÚNICAMENTE en el primer render de la app. Si leyéramos `localStorage.getItem` en el cuerpo
- *    del componente, se ejecutaría innecesariamente en cada re-render, afectando el rendimiento.
- *
- * 2. Manejo de Errores y Protección de Datos:
- *    Si `cargarContactos()` o `cargarViajes()` detecta que el JSON está dañado o manipulado,
- *    activamos `errorAlmacenamiento` y BLOQUEAMOS la sobreescritura automática. Así prevenimos
- *    borrar información del usuario por error.
- *
- * 3. Feedback Honesto al Usuario:
- *    Cumpliendo el requisito "no muestres 'guardado' si falló el almacenamiento", verificamos
- *    el resultado retornado por `guardarContactos()` o `guardarViajes()`. Solo felicitamos si
- *    el navegador realmente persistió la información en el disco del dispositivo.
+ * MEJORAS M4:
+ * 1. Regla de Oro: Impedir un segundo viaje activo (verificación local y en almacenamiento).
+ * 2. Sincronización entre pestañas (`window.addEventListener('storage')`) para evitar colisiones.
+ * 3. Protección contra corrupción de datos locales y errores de escritura.
+ * 4. Notificaciones claras de éxito o error que no engañan al usuario.
  */
 export default function App() {
-  // Pestaña actual de la pantalla móvil ('viaje', 'contactos', 'historial', 'respaldo')
   const [pestanaActiva, setPestanaActiva] = useState<
     'viaje' | 'contactos' | 'historial' | 'respaldo'
   >('viaje');
 
-  // Registro de errores de almacenamiento (ej: datos corruptos o cuota superada)
+  // Error de almacenamiento global (ej: JSON corrupto)
   const [errorAlmacenamiento, setErrorAlmacenamiento] = useState<string | null>(null);
 
-  // Notificación de éxito o información
+  // Notificaciones al usuario
   const [mensajeExito, setMensajeExito] = useState<string | null>(null);
-  // Notificación de advertencia/error de operación
   const [mensajeError, setMensajeError] = useState<string | null>(null);
 
-  // 1. Cargamos contactos desde localStorage al arrancar
+  // 1. Carga inicial de Contactos
   const [contactos, setContactos] = useState<Contacto[]>(() => {
     const res = cargarContactos();
     if (res.exito && res.datos) {
@@ -63,7 +52,7 @@ export default function App() {
     return [];
   });
 
-  // 2. Cargamos viajes desde localStorage al arrancar
+  // 2. Carga inicial de Viajes
   const [viajes, setViajes] = useState<Viaje[]>(() => {
     const res = cargarViajes();
     if (res.exito && res.datos) {
@@ -72,7 +61,7 @@ export default function App() {
     return [];
   });
 
-  // Al montar, verificamos si alguna de las dos cargas falló por datos dañados
+  // Verificación de integridad al montar la app
   useEffect(() => {
     const resContactos = cargarContactos();
     const resViajes = cargarViajes();
@@ -84,6 +73,26 @@ export default function App() {
     }
   }, []);
 
+  // Sincronización en tiempo real entre múltiples pestañas del mismo navegador
+  useEffect(() => {
+    const sincronizarEntrePestanas = (e: StorageEvent) => {
+      if (e.key === CLAVE_VIAJES) {
+        const res = cargarViajes();
+        if (res.exito && res.datos) {
+          setViajes(res.datos);
+        }
+      } else if (e.key === CLAVE_CONTACTOS) {
+        const res = cargarContactos();
+        if (res.exito && res.datos) {
+          setContactos(res.datos);
+        }
+      }
+    };
+
+    window.addEventListener('storage', sincronizarEntrePestanas);
+    return () => window.removeEventListener('storage', sincronizarEntrePestanas);
+  }, []);
+
   // Estado derivado: viaje actualmente en curso
   const viajeActivo = viajes.find((v) => v.estado === 'en_curso') || null;
 
@@ -92,14 +101,12 @@ export default function App() {
     const nuevosContactos = [...contactos, nuevoContacto];
     setContactos(nuevosContactos);
 
-    // Intentamos persistir en localStorage
     const resultado = guardarContactos(nuevosContactos);
-
     if (resultado.exito) {
-      mostrarNotificacionExito(`Contacto "${nuevoContacto.nombre}" guardado en el almacenamiento local.`);
+      mostrarNotificacionExito(`Contacto "${nuevoContacto.nombre}" guardado correctamente.`);
     } else {
       mostrarNotificacionError(
-        resultado.error || 'No se pudo guardar el contacto en el almacenamiento local. Solo se mantendrá en esta sesión.'
+        resultado.error || 'No se pudo guardar el contacto en el almacenamiento local.'
       );
     }
   };
@@ -107,7 +114,9 @@ export default function App() {
   // Manejador: Eliminar contacto
   const handleEliminarContacto = (id: string) => {
     if (viajeActivo && viajeActivo.contactoId === id) {
-      alert('No podés eliminar este contacto porque tiene un viaje en curso asignado.');
+      mostrarNotificacionError(
+        'No podés eliminar este contacto porque tiene un viaje en curso asignado.'
+      );
       return;
     }
 
@@ -122,11 +131,27 @@ export default function App() {
     }
   };
 
-  // Manejador: Iniciar viaje
+  // Manejador: Iniciar viaje con doble verificación de viaje activo
   const handleIniciarViaje = (nuevoViaje: Viaje) => {
+    // 1. Verificación en estado de memoria
     if (viajeActivo) {
-      alert('Ya tenés un viaje en curso.');
+      mostrarNotificacionError(
+        'Ya tenés un viaje en curso. Debés finalizarlo antes de iniciar otro.'
+      );
       return;
+    }
+
+    // 2. Verificación defensiva contra concurrencia en almacenamiento
+    const viajesStorage = cargarViajes();
+    if (viajesStorage.exito && viajesStorage.datos) {
+      const existeActivoEnDisco = viajesStorage.datos.some((v) => v.estado === 'en_curso');
+      if (existeActivoEnDisco) {
+        setViajes(viajesStorage.datos);
+        mostrarNotificacionError(
+          'Ya existe un viaje en curso iniciado en este dispositivo. No se permite un segundo viaje activo.'
+        );
+        return;
+      }
     }
 
     const nuevosViajes = [...viajes, nuevoViaje];
@@ -138,7 +163,7 @@ export default function App() {
       mostrarNotificacionExito(`¡Viaje hacia ${nuevoViaje.destino} iniciado y guardado!`);
     } else {
       mostrarNotificacionError(
-        resultado.error || 'Viaje iniciado en memoria, pero no pudo guardarse en el almacenamiento local.'
+        resultado.error || 'Viaje iniciado en memoria, pero falló el almacenamiento local.'
       );
     }
   };
@@ -170,7 +195,7 @@ export default function App() {
     }
   };
 
-  // Manejador: Cancelar viaje en curso (sin marcar llegada)
+  // Manejador: Cancelar viaje en curso
   const handleCancelarViaje = (viajeId: string) => {
     const nuevosViajes = viajes.filter((v) => v.id !== viajeId);
     setViajes(nuevosViajes);
@@ -183,7 +208,7 @@ export default function App() {
     }
   };
 
-  // Manejador: Exportar respaldo rápido desde cualquier lugar
+  // Manejador: Exportar respaldo rápido
   const handleExportarRespaldo = () => {
     const resultado = exportarRespaldoAJson(contactos, viajes);
     if (resultado.exito) {
@@ -236,7 +261,7 @@ export default function App() {
           </div>
         )}
 
-        {/* Mensaje flotante de error al guardar */}
+        {/* Mensaje flotante de error al guardar o validar */}
         {mensajeError && (
           <div className="mx-4 mt-3 p-3 bg-red-700 text-white rounded-xl shadow-md text-xs font-semibold flex items-center gap-2 transition-all">
             <AlertTriangle className="w-4 h-4 shrink-0 text-red-200" />
@@ -305,11 +330,10 @@ export default function App() {
           <section className="mt-8 pt-6 border-t border-slate-200/90 text-xs text-slate-500 space-y-2">
             <div className="flex items-center gap-1.5 font-semibold text-slate-700">
               <BookOpen className="w-4 h-4 text-slate-500" />
-              <span>Práctica Escolar - Ejercicio 31 (Mejora M2)</span>
+              <span>Práctica Escolar - Ejercicio 31 (Mejora M4)</span>
             </div>
             <p className="text-[11px] leading-relaxed text-slate-500">
-              Persistencia local habilitada con <code>localStorage</code> (versión 1.0).
-              Tus contactos y viajes se conservan al cerrar o recargar la pestaña.
+              Validaciones defensivas activas: campos no vacíos, teléfono solo numérico (mín. 8 dígitos), destino no numérico (máx. 120 caracteres) y fecha futura.
             </p>
           </section>
         </main>
